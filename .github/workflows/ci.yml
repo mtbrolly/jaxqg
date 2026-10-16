@@ -1,0 +1,111 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  precision:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        x64: ["0", "1"]
+    env:
+      JAX_PLATFORMS: cpu
+      JAX_ENABLE_X64: ${{ matrix.x64 }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -e ".[dev]"
+      - run: pytest
+
+  cpu:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.14"]
+    env:
+      JAX_PLATFORMS: cpu
+      JAX_ENABLE_X64: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -e ".[dev]"
+      - run: ruff check src/jaxqg tests
+      - run: pytest
+      - run: python -m build
+      - name: Inspect distribution contents
+        run: >-
+          python -c 'import glob, tarfile, zipfile; w=zipfile.ZipFile(glob.glob("dist/*.whl")[0]); s=tarfile.open(glob.glob("dist/*.tar.gz")[0]); names=w.namelist()+s.getnames(); assert not any("/runs/" in p or "/profiles/" in p for p in names), names'
+      - name: Install wheel outside the checkout
+        working-directory: /tmp
+        run: |
+          python -m pip install --no-deps --target /tmp/jaxqg-wheel "$GITHUB_WORKSPACE"/dist/*.whl
+          PYTHONPATH=/tmp/jaxqg-wheel python -c 'import jaxqg; print(jaxqg.__version__)'
+      - name: Install sdist into a throwaway venv
+        working-directory: /tmp
+        run: |
+          python -m venv /tmp/sdist-venv
+          /tmp/sdist-venv/bin/python -m pip install "$GITHUB_WORKSPACE"/dist/*.tar.gz
+          /tmp/sdist-venv/bin/python -c 'import jaxqg; print(jaxqg.__version__)'
+
+  pyqg:
+    runs-on: ubuntu-latest
+    env:
+      JAX_PLATFORMS: cpu
+      JAX_ENABLE_X64: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --upgrade pip
+      # pyqg builds from source and its kernel.pyx does not compile under
+      # Cython 3 ("Cannot assign type 'double' to 'int'"); install it with
+      # build isolation disabled so the pinned cython<3 is used. pyqg is also
+      # binary-incompatible with numpy 2, so pin numpy<2 and a jax release
+      # that still supports numpy 1 (jax>=0.8 imports numpy.dtypes.StringDType).
+      - run: python -m pip install "cython<3" "numpy<2" "setuptools" "wheel"
+      - run: python -m pip install --no-build-isolation pyqg
+      - run: python -m pip install -e ".[dev]" "jax==0.7.1" "jaxlib==0.7.1"
+      - run: python -m pip install "numpy<2"
+      - run: pytest tests/test_compare_pyqg.py
+
+  sharding:
+    runs-on: ubuntu-latest
+    env:
+      JAX_PLATFORMS: cpu
+      JAX_ENABLE_X64: "1"
+      XLA_FLAGS: "--xla_force_host_platform_device_count=8"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -e ".[dev]"
+      - run: pytest tests/test_grid.py -k shard
+
+  lower-bound:
+    runs-on: ubuntu-latest
+    env:
+      JAX_PLATFORMS: cpu
+      JAX_ENABLE_X64: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - run: python -m pip install "jax==0.4.35" "jaxlib==0.4.35" "numpy==1.24.4" pytest
+      - run: python -m pip install --no-deps -e .
+      - run: pytest

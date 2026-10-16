@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jaxqg"
+version = "1.0.0"
+description = "N-layer quasigeostrophic turbulence model implemented in JAX"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    {name = "Martin Brolly"}
+]
+
+dependencies = [
+    "jax>=0.4.35",
+    "numpy>=1.23",
+]
+
+[project.optional-dependencies]
+dev = ["build", "pytest", "ruff"]
+notebooks = ["matplotlib", "notebook", "ipykernel", "nbclient", "nbconvert"]
+test = ["pytest"]
+reference = ["pyqg; python_version < '3.12'", "numpy<2; python_version < '3.12'"]
+
+[project.urls]
+Homepage = "https://github.com/mtbrolly/jaxqg"
+Repository = "https://github.com/mtbrolly/jaxqg.git"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["jaxqg*"]
+
+[tool.pytest.ini_options]
+markers = [
+    "slow: longer-running tests",
+    "reference: tests requiring the pyqg reference package",
+    "sharding: tests requiring more than one visible device",
+]
